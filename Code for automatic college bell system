@@ -1,0 +1,161 @@
+```cpp
+#include <Wire.h>
+#include <RTClib.h>
+#include <LiquidCrystal.h>
+
+// LCD connections
+LiquidCrystal lcd(7, 6, 5, 4, 3, 2);
+
+// RTC
+RTC_DS3231 rtc;
+
+// Output pins
+#define RELAY 8
+#define BUZZER 9
+
+// Relay logic
+#define RELAY_ON LOW
+#define RELAY_OFF HIGH
+
+// Bell timetable
+const int bellHours[] = {
+  8, 9, 10, 10, 11, 12, 13, 14, 15
+};
+
+const int bellMinutes[] = {
+  30, 30, 30, 45, 45, 45, 20, 20, 20
+};
+
+// 1 = Long bell, 0 = Short bell
+const int bellType[] = {
+  1, 0, 1, 1, 0, 1, 1, 0, 1
+};
+
+const int totalBells = 9;
+
+// Bell durations
+const unsigned long LONG_BELL = 5000;
+const unsigned long SHORT_BELL = 3000;
+
+bool bellRinging = false;
+
+unsigned long bellStartTime = 0;
+unsigned long currentBellDuration = 0;
+
+int lastBellHour = -1;
+int lastBellMinute = -1;
+
+void setup()
+{
+  Serial.begin(9600);
+
+  pinMode(RELAY, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+
+  digitalWrite(RELAY, RELAY_OFF);
+  digitalWrite(BUZZER, LOW);
+
+  lcd.begin(16, 2);
+
+  if (!rtc.begin())
+  {
+    lcd.print("RTC NOT FOUND!");
+    while (1);
+  }
+
+  if (rtc.lostPower())
+  {
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  }
+
+  lcd.setCursor(0, 0);
+  lcd.print("COLLEGE BELL");
+  lcd.setCursor(0, 1);
+  lcd.print("SYSTEM STARTED");
+
+  delay(2000);
+  lcd.clear();
+}
+
+void loop()
+{
+  DateTime now = rtc.now();
+
+  // Display current time
+  lcd.setCursor(0, 0);
+
+  if (now.hour() < 10) lcd.print("0");
+  lcd.print(now.hour());
+  lcd.print(":");
+
+  if (now.minute() < 10) lcd.print("0");
+  lcd.print(now.minute());
+  lcd.print(":");
+
+  if (now.second() < 10) lcd.print("0");
+  lcd.print(now.second());
+
+  lcd.print("       ");
+
+  // Display date
+  lcd.setCursor(0, 1);
+
+  if (now.day() < 10) lcd.print("0");
+  lcd.print(now.day());
+  lcd.print("/");
+
+  if (now.month() < 10) lcd.print("0");
+  lcd.print(now.month());
+  lcd.print("/");
+
+  lcd.print(now.year());
+
+  // Check timetable
+  for (int i = 0; i < totalBells; i++)
+  {
+    if (now.hour() == bellHours[i] &&
+        now.minute() == bellMinutes[i] &&
+        now.second() == 0 &&
+        (lastBellHour != now.hour() ||
+         lastBellMinute != now.minute()))
+    {
+      if (bellType[i] == 1)
+      {
+        currentBellDuration = LONG_BELL;
+        Serial.println("LONG BELL");
+      }
+      else
+      {
+        currentBellDuration = SHORT_BELL;
+        Serial.println("SHORT BELL");
+      }
+
+      ringBell();
+
+      lastBellHour = now.hour();
+      lastBellMinute = now.minute();
+    }
+  }
+
+  // Stop bell automatically
+  if (bellRinging &&
+      millis() - bellStartTime >= currentBellDuration)
+  {
+    digitalWrite(RELAY, RELAY_OFF);
+    digitalWrite(BUZZER, LOW);
+
+    bellRinging = false;
+  }
+
+  delay(200);
+}
+
+void ringBell()
+{
+  digitalWrite(RELAY, RELAY_ON);
+  digitalWrite(BUZZER, HIGH);
+
+  bellStartTime = millis();
+  bellRinging = true;
+}
+```
